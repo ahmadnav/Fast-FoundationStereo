@@ -21,11 +21,19 @@ class Combined_Geo_Encoding_Volume:
         self.geo_volume_pyramid.append(geo_volume)
         self.init_corr_pyramid.append(init_corr)
         for _ in range(self.num_levels-1):
-            geo_volume = F.avg_pool2d(geo_volume, [1,2], stride=[1,2])
+            # geo_volume = F.avg_pool2d(geo_volume, [1,2], stride=[1,2])
+
+            c = int(geo_volume.shape[1])
+            geo_volume = F.conv2d(geo_volume, torch.full((c, 1, 1, 2), 0.5, dtype=geo_volume.dtype, device=geo_volume.device), stride=(1, 2), groups=c)
+
             self.geo_volume_pyramid.append(geo_volume)
 
         for _ in range(self.num_levels-1):
-            init_corr = F.avg_pool2d(init_corr, [1,2], stride=[1,2])
+            #init_corr = F.avg_pool2d(init_corr, [1,2], stride=[1,2])
+
+            c = int(init_corr.shape[1])
+            init_corr = F.conv2d(init_corr, torch.full((c, 1, 1, 2), 0.5, dtype=init_corr.dtype, device=init_corr.device), stride=(1, 2), groups=c)
+
             self.init_corr_pyramid.append(init_corr)
 
 

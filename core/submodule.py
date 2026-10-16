@@ -618,8 +618,11 @@ class ChannelAttentionEnhancement(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        avg_out = self.fc(self.avg_pool(x))
-        max_out = self.fc(self.max_pool(x))
+        # https://github.com/NVIDIA/TensorRT/issues/4715
+        # avg_out = self.fc(self.avg_pool(x))
+        avg_out = self.fc(x.mean(dim=[2,3], keepdim=True))
+        # max_out = self.fc(self.max_pool(x))
+        max_out = self.fc(x.amax(dim=[2,3], keepdim=True))
         out = avg_out + max_out
         return self.sigmoid(out)
 

@@ -3,8 +3,10 @@ FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
 ENV TZ=US/Pacific
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-RUN apt-get update --fix-missing && \
-    apt-get install -y apt-utils build-essential ca-certificates cmake curl ffmpeg git libturbojpeg-dev pkg-config wget libnvinfer10 libnvinfer-plugin10 libnvonnxparsers10 libnvinfer-dispatch10 libnvinfer-bin zstd libx11-xcb1 libxcb-xinerama0 libxcb-icccm4 libxcb-render-util0 libxcb-shape0 libxcb-keysyms1 libxcb-image0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-xkb1 libxcb-render0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-randr0 libxcb-xtest0 libsm6 libxext6 libxkbcommon0 && \
+RUN apt-get update --fix-missing &&\
+    apt-get install -y apt-utils build-essential ca-certificates cmake curl ffmpeg git libturbojpeg-dev pkg-config wget \
+    zstd libx11-xcb1 libxcb-xinerama0 libxcb-icccm4 libxcb-render-util0 libxcb-shape0 libxcb-keysyms1 libxcb-image0 libxkbcommon-x11-0 \
+    libxcb-cursor0 libxcb-xkb1 libxcb-render0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-randr0 libxcb-xtest0 libsm6 libxext6 libxkbcommon0 &&\
     rm -rf /var/lib/apt/lists/*
 
 SHELL ["/bin/bash", "--login", "-c"]
@@ -28,16 +30,32 @@ RUN conda init bash &&\
     pip install uv &&\
     uv pip install torch==2.6.0 torchvision==0.21.0 xformers --index-url https://download.pytorch.org/whl/cu124
 
-COPY requirements.txt /tmp/requirements.txt
+COPY requirements.txt /requirements.txt
+
+# Do not install nvidia-modelopt[torch] here. It has a strong transitive torch
+# requirement and can silently replace the pinned torch/torchvision pair above,
+# causing torchvision ABI mismatches such as:
+#   RuntimeError: operator torchvision::nms does not exist
+# Install modelopt manually only if you need quantization tooling.
+# nvidia-modelopt[torch] 
 RUN conda activate my &&\
-    uv pip install -r /tmp/requirements.txt &&\
-    uv pip install onnxruntime-gpu onnx pycuda cuda-python tensorrt-cu12 tensorrt-lean-cu12 tensorrt-dispatch-cu12 nvidia-modelopt[torch] &&\
+    uv pip install -r /requirements.txt &&\
+    uv pip install onnxruntime-gpu onnx pycuda cuda-python tensorrt-cu12 tensorrt-lean-cu12 tensorrt-dispatch-cu12 &&\
     conda install -y -c anaconda h5py &&\
     conda install -y -c conda-forge libstdcxx-ng
 
-RUN cd / && wget https://developer.download.nvidia.com/compute/tensorrt/10.11.0/local_installers/nv-tensorrt-local-repo-ubuntu2204-10.11.0-cuda-12.9_1.0-1_amd64.deb &&\
-    apt install -y ./nv-tensorrt-local-repo-ubuntu2204-10.11.0-cuda-12.9_1.0-1_amd64.deb &&\
-    echo 'alias trtexec="/usr/src/tensorrt/bin/trtexec"' >> ~/.bashrc &&\
-    rm -f /nv-tensorrt-local-repo-ubuntu2204-10.11.0-cuda-12.9_1.0-1_amd64.deb
+ARG nvtensortrt_deb=nv-tensorrt-local-repo-ubuntu2204-10.11.0-cuda-12.9_1.0-1_amd64.deb
+## Make sure cp /var/nv-tensorrt-local-repo-x matches above as follows nv-tensorrt-local-repo-ubuntu2204-10.11.0-cuda-12.9
+RUN cd / && wget https://developer.download.nvidia.com/compute/tensorrt/10.11.0/local_installers/${nvtensortrt_deb} &&\
+    dpkg -i ./${nvtensortrt_deb} &&\
+    cp /var/nv-tensorrt-local-repo-ubuntu2204-10.11.0-cuda-12.9/*-keyring.gpg /usr/share/keyrings/ &&\
+    apt-get update &&\
+    rm -f /${nvtensortrt_deb}
+
+RUN echo 'alias trtexec="/usr/src/tensorrt/bin/trtexec"' >> ~/.bashrc && source ~/.bashrc
+
+COPY tensorrt.pref /etc/apt/preferences.d/tensorrt.pref
+
+RUN apt-get install -y tensorrt libnvinfer10 libnvinfer-plugin10 libnvonnxparsers10 libnvinfer-dispatch10 libnvinfer-bin
 
 SHELL ["/bin/bash", "-c", "source ~/.bashrc && conda activate my"]
